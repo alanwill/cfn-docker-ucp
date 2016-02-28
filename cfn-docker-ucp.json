@@ -1,0 +1,783 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Builds a Docker Universal Control Plane environment",
+
+  "Parameters" : {
+    "AppKeyName": {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the Docker host instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+    },
+    "InternalCorporateCidrIp" : {
+      "Description" : "Corporate internal CIDR (Used to limit ingress traffic only from the corporate IP space)",
+      "Type" : "String",
+      "Default" :  "10.0.0.0/8"
+    },
+    "AppName" : {
+      "Description" : "What is the name of the application? This is used to tag the resources",
+      "Type": "String",
+      "MinLength": "3",
+      "MaxLength": "25",
+      "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+    },
+    "UCPInstanceType" : {
+      "Description" : "Instance type for Docker Universal Control Plane node(s)",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : [ "t2.micro","t2.small","t2.medium","t2.large","m4.large","m4.xlarge","m4.2xlarge","m4.4xlarge" ]
+    },
+    "UCPConsoleFQDN" : {
+      "Description" : "Fully Qualified Domain Name to UCP console",
+      "Type" : "String",
+      "Default" : "docker-console.mycompany.com"
+    },
+    "UCPAdminPWD" : {
+      "Description" : "UCP administrative password",
+      "Type" : "String",
+      "NoEcho" : "true",
+      "Default" : "orca"
+    },
+    "UCPControllerCount" : {
+      "Description" : "Number of UCP Controller nodes, this should be either 3 or 5",
+      "Type" : "String",
+      "Default" : "3",
+      "AllowedValues" : [ "3","5" ]
+    },
+    "UCPServerCertFingerprint" : {
+      "Description" : "Certificate fingerprint for Web Server",
+      "Type" : "String"
+    },
+    "UCPClusterNodeCount" : {
+      "Description" : "Number of UCP Cluster nodes (where the containers will run), this could be any number as it dictates cluster capacity within a region",
+      "Type" : "String",
+      "Default" : "3"
+    },
+    "ELBLogsBucket" : {
+      "Description" : "Name of S3 bucket for sending ELB logs. NOTE: This bucket MUST be in the same region as ELB",
+      "Type": "String",
+      "MinLength": "3",
+      "MaxLength": "30",
+      "ConstraintDescription": "Must be a text input"
+    },
+    "UCPAMI" : {
+      "Description" : "Optional: AMI to be used for the UCP instance. Leave 'default' if not custom AMI is needed, for example with aufs drivers",
+      "Type" : "String",
+      "Default" : "default",
+      "MaxLength": "12"
+    },
+    "UCPConfigsBucket" : {
+      "Description" : "Name of S3 bucket for storing Docker images. ",
+      "Type": "String",
+      "MinLength": "3",
+      "MaxLength": "30",
+      "ConstraintDescription": "Must be a text input"
+    },
+    "EnvironmentName" : {
+      "Description" : "What is the environment type, e.g. prd/stg/dev/tst/uat/poc.",
+      "Type": "String",
+      "MinLength": "3",
+      "MaxLength": "5",
+      "ConstraintDescription": "must me be up to 5 characters."
+    },
+    "ApplicationSubnetAZ1" : {
+      "Description" : "Subnet ID for the Application subnet in AZ1",
+      "Type" : "AWS::EC2::Subnet::Id",
+      "ConstraintDescription": "Must be a valid subnet ID of the VPC where you're building this application in the form of subnet-abcdefgh"
+    },
+    "ApplicationSubnetAZ2" : {
+      "Description" : "Subnet ID for the Application subnet in AZ2",
+      "Type" : "AWS::EC2::Subnet::Id",
+      "ConstraintDescription": "Must be a valid subnet ID of the VPC where you're building this application in the form of subnet-abcdefgh"
+    },
+    "ApplicationSubnetAZ3" : {
+      "Description" : "Subnet ID for the Application subnet in AZ3",
+      "Type" : "AWS::EC2::Subnet::Id",
+      "ConstraintDescription": "Must be a valid subnet ID of the VPC where you're building this application in the form of subnet-abcdefgh"
+    },
+    "InternalLBSubnetAZ1" : {
+      "Description" : "Subnet ID for the Internal Load Balancers subnet in AZ1",
+      "Type" : "AWS::EC2::Subnet::Id",
+      "ConstraintDescription": "Must be a valid subnet ID of the VPC where you're building this application in the form of subnet-abcdefgh"
+    },
+    "InternalLBSubnetAZ2" : {
+      "Description" : "Subnet ID for the Internal Load Balancers subnet in AZ2",
+      "Type" : "AWS::EC2::Subnet::Id",
+      "ConstraintDescription": "Must be a valid subnet ID of the VPC where you're building this application in the form of subnet-abcdefgh"
+    },
+    "InternalLBSubnetAZ3" : {
+      "Description" : "Subnet ID for the Internal Load Balancers subnet in AZ3",
+      "Type" : "AWS::EC2::Subnet::Id",
+      "ConstraintDescription": "Must be a valid subnet ID of the VPC where you're building this application in the form of subnet-abcdefgh"
+    },
+    "VPCID" : {
+      "Description" : "VPC ID",
+      "Type" : "AWS::EC2::VPC::Id",
+      "ConstraintDescription": "Must be the VPC ID of the VPC where you're building this application in the form of vpc-abcdefgh"
+    },
+    "ELBLogsBucketPrefix" : {
+      "Description" : "Prefix for ELB logs stored in S3 (Can be left blank)",
+      "Type" : "String"
+    },
+    "ELBName" : {
+      "Description" : "Name of the ELB",
+      "Type" : "String",
+      "Default" : "docker-ucp"
+    },
+    "DockerSNSNotificationsARN" : {
+      "Description" : "ARN for the Docker Notifications SNS topic",
+      "Type" : "String"
+    }
+
+  },
+
+  "Metadata" : {
+    "AWS::CloudFormation::Interface" : {
+    "ParameterGroups" : [
+      {
+        "Label" : { "default" : "Network Configuration" },
+        "Parameters" : [ "InternalCorporateCidrIp", "ApplicationSubnetAZ1", "ApplicationSubnetAZ2", "ApplicationSubnetAZ3", "InternalLBSubnetAZ1", "InternalLBSubnetAZ2", "InternalLBSubnetAZ3", "VPCID" ]
+      },
+      {
+        "Label" : { "default" : "UCP Configuration" },
+        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPInstanceType", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
+      }
+    ],
+    "ParameterLabels" : {
+      "VPCID" : { "default" : "Which VPC should this be deployed into?" }
+    }
+  }
+},
+
+
+  "Conditions" : {
+      "UseDefaultAMI" : {"Fn::Equals" : [{"Ref" : "UCPAMI"}, "default"] }
+  },
+
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+      "t2.micro"   : { "Arch" : "HVM64" },
+      "t2.small"   : { "Arch" : "HVM64" },
+      "t2.medium"  : { "Arch" : "HVM64" },
+      "t2.large"  : { "Arch" : "HVM64" },
+      "m3.medium"  : { "Arch" : "HVM64" },
+      "m3.large"  : { "Arch" : "HVM64" },
+      "m3.xlarge"  : { "Arch" : "HVM64" },
+      "m3.2xlarge"  : { "Arch" : "HVM64" },
+      "m4.large"  : { "Arch" : "HVM64" },
+      "m4.xlarge"  : { "Arch" : "HVM64" },
+      "m4.2xlarge"  : { "Arch" : "HVM64" },
+      "m4.4xlarge"  : { "Arch" : "HVM64" },
+      "c3.large"  : { "Arch" : "HVM64" },
+      "c3.xlarge"  : { "Arch" : "HVM64" },
+      "c3.2xlarge"  : { "Arch" : "HVM64" },
+      "c3.4xlarge"  : { "Arch" : "HVM64" },
+      "c3.8xlarge"  : { "Arch" : "HVM64" },
+      "r3.large"  : { "Arch" : "HVM64" },
+      "r3.xlarge"  : { "Arch" : "HVM64" },
+      "r3.2xlarge"  : { "Arch" : "HVM64" },
+      "r3.4xlarge"  : { "Arch" : "HVM64" },
+      "r3.8xlarge"  : { "Arch" : "HVM64" },
+      "i2.xlarge"  : { "Arch" : "HVM64" },
+      "i2.2xlarge"  : { "Arch" : "HVM64" },
+      "i2.4xlarge"  : { "Arch" : "HVM64" },
+      "i2.8xlarge"  : { "Arch" : "HVM64" },
+      "hs1.8xlarge"  : { "Arch" : "HVM64" }
+    },
+    "UCPRegionArch2AMI" : {
+      "us-west-2"      : {"HVM64" : "ami-5189a661"},
+      "us-west-1"      : {"HVM64" : "ami-df6a8b9b"},
+      "us-east-1"      : {"HVM64" : "ami-d05e75b8"}
+    },
+    "AWSRegionArch2AMI" : {
+      "us-west-2"      : {"HVM64" : "ami-5189a661"},
+      "us-west-1"      : {"HVM64" : "ami-df6a8b9b"},
+      "us-east-1"      : {"HVM64" : "ami-d05e75b8"}
+    }
+  },
+
+  "Resources" : {
+
+    "UCPControllerElasticLoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties" : {
+        "AccessLoggingPolicy" : {
+          "Enabled" : true,
+          "EmitInterval" : 5,
+          "S3BucketName" : { "Ref" : "ELBLogsBucket" },
+          "S3BucketPrefix" : { "Ref" : "ELBLogsBucketPrefix" }
+        },
+        "ConnectionDrainingPolicy" : { "Enabled" : true, "Timeout" : 300 },
+        "CrossZone" : true,
+        "HealthCheck" : {
+          "HealthyThreshold" : "5",
+          "Interval" : "60",
+           "Target" : "TCP:443",
+           "Timeout" : "5",
+           "UnhealthyThreshold" : "5"
+        },
+        "LoadBalancerName" : { "Ref" : "ELBName" },
+        "Instances" : [ { "Ref" : "UCPTempMaster" } ],
+        "Listeners" : [ {
+          "InstancePort" : "443",
+          "InstanceProtocol" : "TCP",
+          "LoadBalancerPort" : "443",
+          "Protocol" : "TCP"
+         } ],
+        "Scheme" : "internal",
+        "Subnets" : [{ "Ref" : "InternalLBSubnetAZ1" }, { "Ref" : "InternalLBSubnetAZ2" }, { "Ref" : "InternalLBSubnetAZ3" }],
+        "SecurityGroups" : [ { "Ref" : "UCPControllerInternalLoadBalancerSG" } ],
+        "Tags" : [
+          {
+            "Key" : "purpose",
+            "Value" : "Docker UCP Controllers"
+          },
+          {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" }
+          },
+          {
+            "Key" : "Name",
+            "Value" : "docker-ucp-controllers"
+          }
+        ]
+      }
+    },
+
+    "UCPTempMaster" : {
+      "Type" : "AWS::EC2::Instance",
+      "Properties" : {
+        "InstanceType" : { "Ref" : "UCPInstanceType" },
+        "KeyName" : { "Ref" : "AppKeyName" },
+        "SubnetId" : { "Ref" : "ApplicationSubnetAZ3" },
+        "ImageId" : {
+           "Fn::If" : [
+             "UseDefaultAMI",
+             { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
+                                         { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPInstanceType" },
+                                         "Arch" ] } ] },
+             {"Ref" : "UCPAMI"}
+           ]},
+        "SecurityGroupIds" : [{ "Ref" : "UCPControllerNodesSG" }],
+        "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
+        "BlockDeviceMappings" : [
+         {
+           "DeviceName" : "/dev/sda1",
+           "Ebs" : { "VolumeSize" : "20", "VolumeType":"gp2" }
+         }
+       ],
+       "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+            "#!/bin/bash \n",
+            "apt-get update -y\n",
+            "curl -O https://bootstrap.pypa.io/get-pip.py\n",
+            "python get-pip.py\n",
+            "rm -f get-pip.py\n",
+            "pip install awscli\n",
+            "\n",
+            "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/docker/install-docker-os-engine.sh /root/install-docker-os-engine.sh\n",
+            "chmod +x /root/install-docker-os-engine.sh\n",
+            "sh /root/install-docker-os-engine.sh\n",
+            "rm -f /root/install-docker-os-engine.sh\n",
+            "docker volume create --name ucp-controller-server-certs\n",
+            "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/ucp/certs/ /var/lib/docker/volumes/ucp-controller-server-certs/_data/ --recursive\n",
+            "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp install --san ", { "Ref" : "UCPConsoleFQDN" }, " --dns 169.254.169.253 --external-ucp-ca\n"
+         ]]}},
+        "Tags" : [
+          {
+            "Key" : "purpose",
+            "Value" : "UCP Temp Master"
+          },
+          {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" }
+          },
+          {
+            "Key" : "Name",
+            "Value" : "UCP Temp Master"
+          }
+        ]
+      }
+    },
+
+    "UCPNode1DiskUtilizationRoot": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "UCP Root Disk Utilization",
+        "MetricName": "DiskSpaceUtilization",
+        "Namespace": "System/Linux",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "3",
+        "Threshold": "80",
+        "AlarmActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "OKActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "InsufficientDataActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "Dimensions": [
+           {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "UCPControllerGroup" }
+           },
+           {
+              "Name": "MountPath",
+              "Value": "/"
+           },
+           {
+              "Name": "Filesystem",
+              "Value": "/dev/xvda1"
+           }
+        ],
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold"
+      }
+    },
+    "UCPNode1MemoryUtilization": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "UCP Memory Utilization",
+        "MetricName": "MemoryUtilization",
+        "Namespace": "System/Linux",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "3",
+        "Threshold": "80",
+        "AlarmActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "OKActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "InsufficientDataActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "Dimensions": [
+           {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "UCPControllerGroup" }
+           }
+        ],
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold"
+      }
+    },
+    "UCPNode1CPUUtilization": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "UCP CPU Utilization",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "2",
+        "Threshold": "90",
+        "AlarmActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "OKActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "InsufficientDataActions": [ { "Ref": "DockerSNSNotificationsARN" } ],
+        "Dimensions": [
+           {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "UCPControllerGroup" }
+           }
+        ],
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold"
+      }
+    },
+
+   "UCPControllerGroup" : {
+     "Type" : "AWS::AutoScaling::AutoScalingGroup",
+     "DependsOn" : "UCPTempMaster",
+     "Properties" : {
+        "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
+        "Cooldown" : "300",
+        "LaunchConfigurationName" : { "Ref" : "UCPControllerLaunchConfig" },
+        "DesiredCapacity" : { "Ref" : "UCPControllerCount" },
+        "HealthCheckGracePeriod" : 300,
+        "HealthCheckType" : "ELB",
+        "MinSize" : { "Ref" : "UCPControllerCount" },
+        "MaxSize" : { "Ref" : "UCPControllerCount" },
+        "LoadBalancerNames" : [ { "Ref" : "UCPControllerElasticLoadBalancer" } ],
+        "NotificationConfigurations" : [
+          {
+            "TopicARN" : { "Ref" : "DockerSNSNotificationsARN" },
+            "NotificationTypes" : [
+              "autoscaling:EC2_INSTANCE_LAUNCH",
+              "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+              "autoscaling:EC2_INSTANCE_TERMINATE",
+              "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+            ]
+          }
+        ],
+        "MetricsCollection": [
+           {
+              "Granularity": "1Minute",
+              "Metrics": [
+                 "GroupMinSize",
+                 "GroupMaxSize"
+              ]
+           }
+        ],
+        "Tags" : [ {
+           "Key" : "Name",
+           "Value" : "UCP Controller Nodes",
+           "PropagateAtLaunch" : "true"
+           },
+           {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" },
+            "PropagateAtLaunch" : "true"
+           },
+           {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" },
+            "PropagateAtLaunch" : "true"
+           },
+           {
+           "Key" : "purpose",
+           "Value" : "Docker Unified Control Plane",
+           "PropagateAtLaunch" : "true"
+          }
+        ]
+     }
+   },
+
+   "UCPControllerLaunchConfig" : {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "DependsOn" : "UCPTempMaster",
+      "Properties" : {
+         "KeyName" : { "Ref" : "AppKeyName" },
+         "ImageId" : {
+            "Fn::If" : [
+              "UseDefaultAMI",
+              { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
+                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPInstanceType" },
+                                          "Arch" ] } ] },
+              {"Ref" : "UCPAMI"}
+            ]},
+         "SecurityGroups" : [ { "Ref" : "UCPControllerNodesSG" } ],
+         "InstanceType" : { "Ref" : "UCPInstanceType" },
+         "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
+         "BlockDeviceMappings" : [
+          {
+            "DeviceName" : "/dev/sda1",
+            "Ebs" : { "VolumeSize" : "20", "VolumeType":"gp2" }
+          }
+        ],
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+             "#!/bin/bash \n",
+             "apt-get update -y\n",
+             "curl -O https://bootstrap.pypa.io/get-pip.py\n",
+             "python get-pip.py\n",
+             "rm -f get-pip.py\n",
+             "pip install awscli\n",
+             "\n",
+             "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/docker/install-docker-os-engine.sh /root/install-docker-os-engine.sh\n",
+             "chmod +x /root/install-docker-os-engine.sh\n",
+             "sh /root/install-docker-os-engine.sh\n",
+             "rm -f /root/install-docker-os-engine.sh\n",
+             "docker volume create --name ucp-controller-server-certs\n",
+             "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/ucp/certs/ /var/lib/docker/volumes/ucp-controller-server-certs/_data/ --recursive\n",
+             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --replica --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --san ", { "Ref" : "UCPConsoleFQDN" }, " --dns 169.254.169.253 --fingerprint ", { "Ref" : "UCPServerCertFingerprint" }, " --external-ucp-ca\n"
+          ]]}}
+      }
+   },
+
+   "UCPClusterNodeGroup" : {
+     "Type" : "AWS::AutoScaling::AutoScalingGroup",
+     "DependsOn" : "UCPControllerGroup",
+     "Properties" : {
+        "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
+        "Cooldown" : "300",
+        "LaunchConfigurationName" : { "Ref" : "UCPClusterNodeLaunchConfig" },
+        "DesiredCapacity" : { "Ref" : "UCPClusterNodeCount" },
+        "HealthCheckGracePeriod" : 300,
+        "HealthCheckType" : "ELB",
+        "MinSize" : { "Ref" : "UCPClusterNodeCount" },
+        "MaxSize" : { "Ref" : "UCPClusterNodeCount" },
+        "NotificationConfigurations" : [
+          {
+            "TopicARN" : { "Ref" : "DockerSNSNotificationsARN" },
+            "NotificationTypes" : [
+              "autoscaling:EC2_INSTANCE_LAUNCH",
+              "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+              "autoscaling:EC2_INSTANCE_TERMINATE",
+              "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+            ]
+          }
+        ],
+        "MetricsCollection": [
+           {
+              "Granularity": "1Minute",
+              "Metrics": [
+                 "GroupMinSize",
+                 "GroupMaxSize"
+              ]
+           }
+        ],
+        "Tags" : [ {
+           "Key" : "Name",
+           "Value" : "UCP Cluster Nodes",
+           "PropagateAtLaunch" : "true"
+           },
+           {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" },
+            "PropagateAtLaunch" : "true"
+           },
+           {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" },
+            "PropagateAtLaunch" : "true"
+           },
+           {
+           "Key" : "purpose",
+           "Value" : "Docker Unified Control Plane",
+           "PropagateAtLaunch" : "true"
+          }
+        ]
+     }
+   },
+
+   "UCPClusterNodeLaunchConfig" : {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "DependsOn" : "UCPControllerGroup",
+      "Properties" : {
+         "KeyName" : { "Ref" : "AppKeyName" },
+         "ImageId" : {
+            "Fn::If" : [
+              "UseDefaultAMI",
+              { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
+                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPInstanceType" },
+                                          "Arch" ] } ] },
+              {"Ref" : "UCPAMI"}
+            ]},
+         "SecurityGroups" : [ { "Ref" : "UCPClusterNodesSG" } ],
+         "InstanceType" : { "Ref" : "UCPInstanceType" },
+         "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
+         "BlockDeviceMappings" : [
+          {
+            "DeviceName" : "/dev/sda1",
+            "Ebs" : { "VolumeSize" : "20", "VolumeType":"gp2" }
+          }
+        ],
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+             "#!/bin/bash \n",
+             "apt-get update -y\n",
+             "curl -O https://bootstrap.pypa.io/get-pip.py\n",
+             "python get-pip.py\n",
+             "rm -f get-pip.py\n",
+             "pip install awscli\n",
+             "\n",
+             "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/docker/install-docker-os-engine.sh /root/install-docker-os-engine.sh\n",
+             "chmod +x /root/install-docker-os-engine.sh\n",
+             "sh /root/install-docker-os-engine.sh\n",
+             "rm -f /root/install-docker-os-engine.sh\n",
+             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --dns 169.254.169.253\n"
+          ]]}}
+      }
+   },
+
+    "ReadWriteToUCPBucket" : {
+      "Type" : "AWS::IAM::ManagedPolicy",
+      "Properties" : {
+        "Description" : "Read/Write access to UCP config and image bucket",
+        "Path" : "/",
+        "PolicyDocument" :   {
+          "Version":"2012-10-17",
+          "Statement": [
+              {
+                  "Effect": "Allow",
+                  "Action": ["s3:ListBucket" ],
+                  "Resource": {"Fn::Join" : [ "", [ "arn:aws:s3:", ":", ":", { "Ref" : "UCPConfigsBucket" }] ]}
+              },
+              {
+                  "Effect": "Allow",
+                  "Action": [ "s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+                  "Resource": {"Fn::Join" : [ "", [ "arn:aws:s3:", ":", ":", { "Ref" : "UCPConfigsBucket" }, "/*" ] ]}
+              }
+          ]
+        }
+      }
+    },
+
+    "MonitoringUCP" : {
+      "Type" : "AWS::IAM::ManagedPolicy",
+      "Properties" : {
+        "Description" : "Cloudwatch monitoring for UCP custom metrics",
+        "Path" : "/",
+        "PolicyDocument" :   {
+          "Version":"2012-10-17",
+          "Statement": [
+              {
+                  "Effect": "Allow",
+                  "Action": [ "cloudwatch:PutMetricData",
+                                "cloudwatch:GetMetricStatistics",
+                                "cloudwatch:ListMetrics",
+                                "ec2:DescribeTags"
+                            ],
+                  "Resource": [ "*" ]
+              }
+          ]
+        }
+      }
+    },
+
+    "UCPInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {
+            "Ref": "UCPRole"
+          }
+        ]
+      }
+    },
+
+    "UCPRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": [ "ec2.amazonaws.com" ] },
+              "Action": [ "sts:AssumeRole" ]
+            }
+          ]
+        },
+        "Path": "/",
+        "ManagedPolicyArns" : [{ "Ref" : "ReadWriteToUCPBucket" }, { "Ref" : "MonitoringUCP" }]
+      }
+    },
+
+
+    "UCPControllerNodesSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Docker UCP Controller Nodes",
+        "VpcId" : {"Ref" : "VPCID"},
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "SourceSecurityGroupId" : { "Ref" : "UCPControllerInternalLoadBalancerSG" } },
+          { "IpProtocol" : "tcp", "FromPort" : "2375", "ToPort" : "2375", "SourceSecurityGroupId" : { "Ref" : "UCPClusterNodesSG" } },
+          { "IpProtocol" : "tcp", "FromPort" : "12376", "ToPort" : "12376", "SourceSecurityGroupId" : { "Ref" : "UCPClusterNodesSG" } }
+
+        ],
+        "Tags" : [
+          {
+            "Key" : "purpose",
+            "Value" : "Docker UCP Controller Nodes"
+          },
+          {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" }
+          }
+        ]
+      }
+    },
+
+    "UCPControllerNodesSGIngress1": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPControllerNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPControllerNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "2375", "ToPort": "2376", "SourceSecurityGroupId": { "Ref": "UCPControllerNodesSG" }
+      }
+    },
+
+    "UCPControllerNodesSGIngress2": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPControllerNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPControllerNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12376", "ToPort": "12376", "SourceSecurityGroupId": { "Ref": "UCPControllerNodesSG" }
+      }
+    },
+
+    "UCPControllerNodesSGIngress3": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPControllerNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPControllerNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12379", "ToPort": "12382", "SourceSecurityGroupId": { "Ref": "UCPControllerNodesSG" }
+      }
+    },
+
+    "UCPClusterNodesSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Docker UCP Controller Nodes",
+        "VpcId" : {"Ref" : "VPCID"},
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "2375", "ToPort" : "2375", "SourceSecurityGroupId" : { "Ref" : "UCPControllerNodesSG" } },
+          { "IpProtocol" : "tcp", "FromPort" : "12376", "ToPort" : "12376", "SourceSecurityGroupId" : { "Ref" : "UCPControllerNodesSG" } }
+        ],
+        "Tags" : [
+          {
+            "Key" : "purpose",
+            "Value" : "Docker UCP Cluster Nodes"
+          },
+          {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" }
+          }
+        ]
+      }
+    },
+
+    "UCPClusterNodesSGIngress1": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPClusterNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPClusterNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "2375", "ToPort": "2375", "SourceSecurityGroupId": { "Ref": "UCPClusterNodesSG" }
+      }
+    },
+
+    "UCPClusterNodesSGIngress2": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPClusterNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPClusterNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12376", "ToPort": "12376", "SourceSecurityGroupId": { "Ref": "UCPClusterNodesSG" }
+      }
+    },
+
+    "UCPControllerInternalLoadBalancerSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Docker UCP Controllers Elastic Load Balancer",
+        "VpcId" : {"Ref" : "VPCID"},
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : { "Ref" : "InternalCorporateCidrIp" } }
+        ],
+        "Tags" : [
+          {
+            "Key" : "purpose",
+            "Value" : "Docker UCP Controllers Internal Load Balancer"
+          },
+          {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" }
+          }
+        ]
+      }
+    }
+  },
+
+  "Outputs" : {
+
+  }
+
+
+}
