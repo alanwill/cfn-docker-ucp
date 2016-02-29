@@ -44,7 +44,7 @@
       "NoEcho" : "true",
       "Default" : "orca"
     },
-    "UCPControllerCount" : {
+    "UCPControllerNodeCount" : {
       "Description" : "Number of UCP Controller nodes, this should be either 3 or 5",
       "Type" : "String",
       "Default" : "3",
@@ -268,7 +268,7 @@
                                          "Arch" ] } ] },
              {"Ref" : "UCPAMI"}
            ]},
-        "SecurityGroupIds" : [{ "Ref" : "UCPControllerNodesSG" }, { "Ref" : "UCPNodesSG" }],
+        "SecurityGroupIds" : [{ "Ref" : "UCPControllerNodeSG" }, { "Ref" : "UCPNodeSG" }],
         "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
         "BlockDeviceMappings" : [
          {
@@ -329,7 +329,7 @@
         "Dimensions": [
            {
               "Name": "AutoScalingGroupName",
-              "Value": { "Ref": "UCPControllerGroup" }
+              "Value": { "Ref": "UCPControllerNodeGroup" }
            },
            {
               "Name": "MountPath",
@@ -359,7 +359,7 @@
         "Dimensions": [
            {
               "Name": "AutoScalingGroupName",
-              "Value": { "Ref": "UCPControllerGroup" }
+              "Value": { "Ref": "UCPControllerNodeGroup" }
            }
         ],
         "ComparisonOperator": "GreaterThanOrEqualToThreshold"
@@ -381,25 +381,25 @@
         "Dimensions": [
            {
               "Name": "AutoScalingGroupName",
-              "Value": { "Ref": "UCPControllerGroup" }
+              "Value": { "Ref": "UCPControllerNodeGroup" }
            }
         ],
         "ComparisonOperator": "GreaterThanOrEqualToThreshold"
       }
     },
 
-   "UCPControllerGroup" : {
+   "UCPControllerNodeGroup" : {
      "Type" : "AWS::AutoScaling::AutoScalingGroup",
      "DependsOn" : "UCPTempMaster",
      "Properties" : {
         "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
         "Cooldown" : "300",
-        "LaunchConfigurationName" : { "Ref" : "UCPControllerLaunchConfig" },
-        "DesiredCapacity" : { "Ref" : "UCPControllerCount" },
+        "LaunchConfigurationName" : { "Ref" : "UCPControllerNodeLaunchConfig" },
+        "DesiredCapacity" : { "Ref" : "UCPControllerNodeCount" },
         "HealthCheckGracePeriod" : 300,
         "HealthCheckType" : "ELB",
-        "MinSize" : { "Ref" : "UCPControllerCount" },
-        "MaxSize" : { "Ref" : "UCPControllerCount" },
+        "MinSize" : { "Ref" : "UCPControllerNodeCount" },
+        "MaxSize" : { "Ref" : "UCPControllerNodeCount" },
         "LoadBalancerNames" : [ { "Ref" : "UCPControllerElasticLoadBalancer" } ],
         "NotificationConfigurations" : [
           {
@@ -445,7 +445,7 @@
      }
    },
 
-   "UCPControllerLaunchConfig" : {
+   "UCPControllerNodeLaunchConfig" : {
       "Type" : "AWS::AutoScaling::LaunchConfiguration",
       "DependsOn" : "UCPTempMaster",
       "Properties" : {
@@ -488,7 +488,7 @@
 
    "UCPCapacityNodeGroup" : {
      "Type" : "AWS::AutoScaling::AutoScalingGroup",
-     "DependsOn" : "UCPControllerGroup",
+     "DependsOn" : "UCPControllerNodeGroup",
      "Properties" : {
         "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
         "Cooldown" : "300",
@@ -544,7 +544,7 @@
 
    "UCPCapacityNodeLaunchConfig" : {
       "Type" : "AWS::AutoScaling::LaunchConfiguration",
-      "DependsOn" : "UCPControllerGroup",
+      "DependsOn" : "UCPControllerNodeGroup",
       "Properties" : {
          "KeyName" : { "Ref" : "AppKeyName" },
          "ImageId" : {
