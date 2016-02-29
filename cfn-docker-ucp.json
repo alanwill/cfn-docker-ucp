@@ -127,7 +127,7 @@
       "Type" : "String"
     },
     "ELBName" : {
-      "Description" : "Name of the ELB",
+      "Description" : "Name of the ELB to main UCP console",
       "Type" : "String",
       "Default" : "docker-ucp"
     },
