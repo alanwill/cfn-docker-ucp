@@ -141,14 +141,14 @@
   "Metadata" : {
     "AWS::CloudFormation::Interface" : {
     "ParameterGroups" : [
-      {
-        "Label" : { "default" : "Network Configuration" },
-        "Parameters" : [ "InternalCorporateCidrIp", "ApplicationSubnetAZ1", "ApplicationSubnetAZ2", "ApplicationSubnetAZ3", "InternalLBSubnetAZ1", "InternalLBSubnetAZ2", "InternalLBSubnetAZ3", "VPCID" ]
-      },
-      {
+    {
         "Label" : { "default" : "UCP Configuration" },
-        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPControllerNodeInstanceType", "UCPCapacityNodeInstanceType", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
-      }
+        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPConsoleFQDN", "UCPAdminPWD", "UCPControllerNodeInstanceType", "UCPControllerNodeCount", "UCPCapacityNodeInstanceType", "UCPCapacityNodeCount", "UCPServerCertFingerprint", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
+    },
+    {
+      "Label" : { "default" : "Network Configuration" },
+      "Parameters" : [ "InternalCorporateCidrIp", "ApplicationSubnetAZ1", "ApplicationSubnetAZ2", "ApplicationSubnetAZ3", "InternalLBSubnetAZ1", "InternalLBSubnetAZ2", "InternalLBSubnetAZ3", "VPCID" ]
+    }
     ],
     "ParameterLabels" : {
       "VPCID" : { "default" : "Which VPC should this be deployed into?" }
