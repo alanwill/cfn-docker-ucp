@@ -28,8 +28,8 @@
       "Default" : "t2.micro",
       "AllowedValues" : [ "t2.micro","t2.small","t2.medium","t2.large","m4.large","m4.xlarge","m4.2xlarge","m4.4xlarge" ]
     },
-    "UCPCapacityNodeInstanceType" : {
-      "Description" : "Instance type for Docker Universal Control Plane Capacity node(s)",
+    "UCPWorkerNodeInstanceType" : {
+      "Description" : "Instance type for Docker Universal Control Plane Worker node(s)",
       "Type" : "String",
       "Default" : "t2.micro",
       "AllowedValues" : [ "t2.micro","t2.small","t2.medium","t2.large","m4.large","m4.xlarge","m4.2xlarge","m4.4xlarge" ]
@@ -55,8 +55,8 @@
       "Description" : "Certificate fingerprint for Web Server",
       "Type" : "String"
     },
-    "UCPCapacityNodeCount" : {
-      "Description" : "Number of UCP Capacity nodes (where the containers will run), this could be any number as it dictates cluster capacity within a region",
+    "UCPWorkerNodeCount" : {
+      "Description" : "Number of UCP Worker nodes (where the containers will run), this could be any number as it dictates cluster capacity within a region",
       "Type" : "String",
       "Default" : "3"
     },
@@ -143,7 +143,7 @@
     "ParameterGroups" : [
     {
         "Label" : { "default" : "UCP Configuration" },
-        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPConsoleFQDN", "UCPAdminPWD", "UCPControllerNodeInstanceType", "UCPControllerNodeCount", "UCPCapacityNodeInstanceType", "UCPCapacityNodeCount", "UCPServerCertFingerprint", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
+        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPConsoleFQDN", "UCPAdminPWD", "UCPControllerNodeInstanceType", "UCPControllerNodeCount", "UCPWorkerNodeInstanceType", "UCPWorkerNodeCount", "UCPServerCertFingerprint", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
     },
     {
       "Label" : { "default" : "Network Configuration" },
@@ -487,18 +487,18 @@
       }
    },
 
-   "UCPCapacityNodeGroup" : {
+   "UCPWorkerNodeGroup" : {
      "Type" : "AWS::AutoScaling::AutoScalingGroup",
      "DependsOn" : "UCPControllerNodeGroup",
      "Properties" : {
         "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
         "Cooldown" : "300",
-        "LaunchConfigurationName" : { "Ref" : "UCPCapacityNodeLaunchConfig" },
-        "DesiredCapacity" : { "Ref" : "UCPCapacityNodeCount" },
+        "LaunchConfigurationName" : { "Ref" : "UCPWorkerNodeLaunchConfig" },
+        "DesiredCapacity" : { "Ref" : "UCPWorkerNodeCount" },
         "HealthCheckGracePeriod" : 300,
         "HealthCheckType" : "EC2",
-        "MinSize" : { "Ref" : "UCPCapacityNodeCount" },
-        "MaxSize" : { "Ref" : "UCPCapacityNodeCount" },
+        "MinSize" : { "Ref" : "UCPWorkerNodeCount" },
+        "MaxSize" : { "Ref" : "UCPWorkerNodeCount" },
         "NotificationConfigurations" : [
           {
             "TopicARN" : { "Ref" : "DockerSNSNotificationsARN" },
@@ -521,7 +521,7 @@
         ],
         "Tags" : [ {
            "Key" : "Name",
-           "Value" : "UCP Capacity Nodes",
+           "Value" : "UCP Worker Nodes",
            "PropagateAtLaunch" : "true"
            },
            {
@@ -543,7 +543,7 @@
      }
    },
 
-   "UCPCapacityNodeLaunchConfig" : {
+   "UCPWorkerNodeLaunchConfig" : {
       "Type" : "AWS::AutoScaling::LaunchConfiguration",
       "DependsOn" : "UCPControllerNodeGroup",
       "Properties" : {
@@ -552,12 +552,12 @@
             "Fn::If" : [
               "UseDefaultAMI",
               { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
-                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPCapacityNodeInstanceType" },
+                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPWorkerNodeInstanceType" },
                                           "Arch" ] } ] },
               {"Ref" : "UCPAMI"}
             ]},
-         "SecurityGroups" : [ { "Ref" : "UCPCapacityNodeSG" }, { "Ref" : "UCPNodeSG" } ],
-         "InstanceType" : { "Ref" : "UCPCapacityNodeInstanceType" },
+         "SecurityGroups" : [ { "Ref" : "UCPWorkerNodeSG" }, { "Ref" : "UCPNodeSG" } ],
+         "InstanceType" : { "Ref" : "UCPWorkerNodeInstanceType" },
          "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
          "BlockDeviceMappings" : [
           {
@@ -577,7 +577,7 @@
              "chmod +x /root/install-docker-os-engine.sh\n",
              "sh /root/install-docker-os-engine.sh\n",
              "rm -f /root/install-docker-os-engine.sh\n",
-             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --dns 169.254.169.253\n"
+             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --dns 169.254.169.253 --fingerprint ", { "Ref" : "UCPServerCertFingerprint" }, "\n"
           ]]}}
       }
    },
@@ -659,7 +659,7 @@
     "UCPNodeSG" : {
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
-        "GroupDescription" : "Docker UCP Nodes (Controller, Replicas and Capacity Nodes)",
+        "GroupDescription" : "Docker UCP Nodes (Controller, Replicas and Worker Nodes)",
         "VpcId" : {"Ref" : "VPCID"},
         "SecurityGroupIngress" : [
         ],
@@ -769,17 +769,17 @@
       }
     },
 
-    "UCPCapacityNodeSG" : {
+    "UCPWorkerNodeSG" : {
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
-        "GroupDescription" : "Docker UCP Capacity Nodes",
+        "GroupDescription" : "Docker UCP Worker Nodes",
         "VpcId" : {"Ref" : "VPCID"},
         "SecurityGroupIngress" : [
         ],
         "Tags" : [
           {
             "Key" : "purpose",
-            "Value" : "Docker UCP Capacity Nodes"
+            "Value" : "Docker UCP Worker Nodes"
           },
           {
             "Key" : "stack",
