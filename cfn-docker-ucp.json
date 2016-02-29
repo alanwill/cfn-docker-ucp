@@ -259,7 +259,7 @@
       "Properties" : {
         "InstanceType" : { "Ref" : "UCPControllerNodeInstanceType" },
         "KeyName" : { "Ref" : "AppKeyName" },
-        "SubnetId" : { "Ref" : "ApplicationSubnetAZ3" },
+        "SubnetId" : { "Ref" : "ApplicationSubnetAZ1" },
         "ImageId" : {
            "Fn::If" : [
              "UseDefaultAMI",
