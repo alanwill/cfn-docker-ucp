@@ -495,7 +495,7 @@
         "LaunchConfigurationName" : { "Ref" : "UCPCapacityNodeLaunchConfig" },
         "DesiredCapacity" : { "Ref" : "UCPCapacityNodeCount" },
         "HealthCheckGracePeriod" : 300,
-        "HealthCheckType" : "ELB",
+        "HealthCheckType" : "EC2",
         "MinSize" : { "Ref" : "UCPCapacityNodeCount" },
         "MaxSize" : { "Ref" : "UCPCapacityNodeCount" },
         "NotificationConfigurations" : [
