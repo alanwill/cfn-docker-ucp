@@ -48,8 +48,8 @@
       "Description" : "Certificate fingerprint for Web Server",
       "Type" : "String"
     },
-    "UCPClusterNodeCount" : {
-      "Description" : "Number of UCP Cluster nodes (where the containers will run), this could be any number as it dictates cluster capacity within a region",
+    "UCPCapacityNodeCount" : {
+      "Description" : "Number of UCP Capacity nodes (where the containers will run), this could be any number as it dictates cluster capacity within a region",
       "Type" : "String",
       "Default" : "3"
     },
@@ -262,7 +262,7 @@
                                          "Arch" ] } ] },
              {"Ref" : "UCPAMI"}
            ]},
-        "SecurityGroupIds" : [{ "Ref" : "UCPControllerNodesSG" }],
+        "SecurityGroupIds" : [{ "Ref" : "UCPControllerNodesSG" }, { "Ref" : "UCPNodesSG" }],
         "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
         "BlockDeviceMappings" : [
          {
@@ -432,7 +432,7 @@
            },
            {
            "Key" : "purpose",
-           "Value" : "Docker Unified Control Plane",
+           "Value" : "Docker Universal Control Plane",
            "PropagateAtLaunch" : "true"
           }
         ]
@@ -452,7 +452,7 @@
                                           "Arch" ] } ] },
               {"Ref" : "UCPAMI"}
             ]},
-         "SecurityGroups" : [ { "Ref" : "UCPControllerNodesSG" } ],
+         "SecurityGroups" : [ { "Ref" : "UCPControllerNodesSG" }, { "Ref" : "UCPNodesSG" } ],
          "InstanceType" : { "Ref" : "UCPInstanceType" },
          "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
          "BlockDeviceMappings" : [
@@ -480,18 +480,18 @@
       }
    },
 
-   "UCPClusterNodeGroup" : {
+   "UCPCapacityNodeGroup" : {
      "Type" : "AWS::AutoScaling::AutoScalingGroup",
      "DependsOn" : "UCPControllerGroup",
      "Properties" : {
         "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
         "Cooldown" : "300",
-        "LaunchConfigurationName" : { "Ref" : "UCPClusterNodeLaunchConfig" },
-        "DesiredCapacity" : { "Ref" : "UCPClusterNodeCount" },
+        "LaunchConfigurationName" : { "Ref" : "UCPCapacityNodeLaunchConfig" },
+        "DesiredCapacity" : { "Ref" : "UCPCapacityNodeCount" },
         "HealthCheckGracePeriod" : 300,
         "HealthCheckType" : "ELB",
-        "MinSize" : { "Ref" : "UCPClusterNodeCount" },
-        "MaxSize" : { "Ref" : "UCPClusterNodeCount" },
+        "MinSize" : { "Ref" : "UCPCapacityNodeCount" },
+        "MaxSize" : { "Ref" : "UCPCapacityNodeCount" },
         "NotificationConfigurations" : [
           {
             "TopicARN" : { "Ref" : "DockerSNSNotificationsARN" },
@@ -514,7 +514,7 @@
         ],
         "Tags" : [ {
            "Key" : "Name",
-           "Value" : "UCP Cluster Nodes",
+           "Value" : "UCP Capacity Nodes",
            "PropagateAtLaunch" : "true"
            },
            {
@@ -529,14 +529,14 @@
            },
            {
            "Key" : "purpose",
-           "Value" : "Docker Unified Control Plane",
+           "Value" : "Docker Universal Control Plane",
            "PropagateAtLaunch" : "true"
           }
         ]
      }
    },
 
-   "UCPClusterNodeLaunchConfig" : {
+   "UCPCapacityNodeLaunchConfig" : {
       "Type" : "AWS::AutoScaling::LaunchConfiguration",
       "DependsOn" : "UCPControllerGroup",
       "Properties" : {
@@ -549,7 +549,7 @@
                                           "Arch" ] } ] },
               {"Ref" : "UCPAMI"}
             ]},
-         "SecurityGroups" : [ { "Ref" : "UCPClusterNodesSG" } ],
+         "SecurityGroups" : [ { "Ref" : "UCPCapacityNodesSG" }, { "Ref" : "UCPNodesSG" } ],
          "InstanceType" : { "Ref" : "UCPInstanceType" },
          "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
          "BlockDeviceMappings" : [
@@ -649,17 +649,101 @@
       }
     },
 
+    "UCPNodesSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Docker UCP Nodes (Controller, Replicas and Capacity Nodes)",
+        "VpcId" : {"Ref" : "VPCID"},
+        "SecurityGroupIngress" : [
+        ],
+        "Tags" : [
+          {
+            "Key" : "purpose",
+            "Value" : "Docker UCP Nodes"
+          },
+          {
+            "Key" : "stack",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "app",
+            "Value" : { "Ref" : "AppName" }
+          }
+        ]
+      }
+    },
+
+    "UCPNodesSGIngress1": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "2375", "ToPort": "2375", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
+    "UCPNodesSGIngress2": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "2376", "ToPort": "2376", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
+    "UCPNodesSGIngress3": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12376", "ToPort": "12376", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
+    "UCPNodesSGIngress4": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12379", "ToPort": "12379", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
+    "UCPNodesSGIngress5": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12380", "ToPort": "12380", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
+    "UCPNodesSGIngress6": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12381", "ToPort": "12381", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
+    "UCPNodesSGIngress7": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "DependsOn": "UCPNodesSG",
+      "Properties": {
+        "GroupId": { "Ref": "UCPNodesSG" },
+        "IpProtocol": "tcp", "FromPort": "12382", "ToPort": "12382", "SourceSecurityGroupId": { "Ref": "UCPNodesSG" }
+      }
+    },
+
 
     "UCPControllerNodesSG" : {
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
-        "GroupDescription" : "Docker UCP Controller Nodes",
+        "GroupDescription" : "Docker UCP Controller Nodes (includes Replicas)",
         "VpcId" : {"Ref" : "VPCID"},
         "SecurityGroupIngress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "SourceSecurityGroupId" : { "Ref" : "UCPControllerInternalLoadBalancerSG" } },
-          { "IpProtocol" : "tcp", "FromPort" : "2375", "ToPort" : "2375", "SourceSecurityGroupId" : { "Ref" : "UCPClusterNodesSG" } },
-          { "IpProtocol" : "tcp", "FromPort" : "12376", "ToPort" : "12376", "SourceSecurityGroupId" : { "Ref" : "UCPClusterNodesSG" } }
-
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "SourceSecurityGroupId" : { "Ref" : "UCPControllerInternalLoadBalancerSG" } }
         ],
         "Tags" : [
           {
@@ -678,46 +762,17 @@
       }
     },
 
-    "UCPControllerNodesSGIngress1": {
-      "Type": "AWS::EC2::SecurityGroupIngress",
-      "DependsOn": "UCPControllerNodesSG",
-      "Properties": {
-        "GroupId": { "Ref": "UCPControllerNodesSG" },
-        "IpProtocol": "tcp", "FromPort": "2375", "ToPort": "2376", "SourceSecurityGroupId": { "Ref": "UCPControllerNodesSG" }
-      }
-    },
-
-    "UCPControllerNodesSGIngress2": {
-      "Type": "AWS::EC2::SecurityGroupIngress",
-      "DependsOn": "UCPControllerNodesSG",
-      "Properties": {
-        "GroupId": { "Ref": "UCPControllerNodesSG" },
-        "IpProtocol": "tcp", "FromPort": "12376", "ToPort": "12376", "SourceSecurityGroupId": { "Ref": "UCPControllerNodesSG" }
-      }
-    },
-
-    "UCPControllerNodesSGIngress3": {
-      "Type": "AWS::EC2::SecurityGroupIngress",
-      "DependsOn": "UCPControllerNodesSG",
-      "Properties": {
-        "GroupId": { "Ref": "UCPControllerNodesSG" },
-        "IpProtocol": "tcp", "FromPort": "12379", "ToPort": "12382", "SourceSecurityGroupId": { "Ref": "UCPControllerNodesSG" }
-      }
-    },
-
-    "UCPClusterNodesSG" : {
+    "UCPCapacityNodesSG" : {
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
-        "GroupDescription" : "Docker UCP Controller Nodes",
+        "GroupDescription" : "Docker UCP Capacity Nodes",
         "VpcId" : {"Ref" : "VPCID"},
         "SecurityGroupIngress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "2375", "ToPort" : "2375", "SourceSecurityGroupId" : { "Ref" : "UCPControllerNodesSG" } },
-          { "IpProtocol" : "tcp", "FromPort" : "12376", "ToPort" : "12376", "SourceSecurityGroupId" : { "Ref" : "UCPControllerNodesSG" } }
         ],
         "Tags" : [
           {
             "Key" : "purpose",
-            "Value" : "Docker UCP Cluster Nodes"
+            "Value" : "Docker UCP Capacity Nodes"
           },
           {
             "Key" : "stack",
@@ -728,24 +783,6 @@
             "Value" : { "Ref" : "AppName" }
           }
         ]
-      }
-    },
-
-    "UCPClusterNodesSGIngress1": {
-      "Type": "AWS::EC2::SecurityGroupIngress",
-      "DependsOn": "UCPClusterNodesSG",
-      "Properties": {
-        "GroupId": { "Ref": "UCPClusterNodesSG" },
-        "IpProtocol": "tcp", "FromPort": "2375", "ToPort": "2375", "SourceSecurityGroupId": { "Ref": "UCPClusterNodesSG" }
-      }
-    },
-
-    "UCPClusterNodesSGIngress2": {
-      "Type": "AWS::EC2::SecurityGroupIngress",
-      "DependsOn": "UCPClusterNodesSG",
-      "Properties": {
-        "GroupId": { "Ref": "UCPClusterNodesSG" },
-        "IpProtocol": "tcp", "FromPort": "12376", "ToPort": "12376", "SourceSecurityGroupId": { "Ref": "UCPClusterNodesSG" }
       }
     },
 
