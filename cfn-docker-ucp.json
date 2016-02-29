@@ -21,8 +21,14 @@
       "MaxLength": "25",
       "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
     },
-    "UCPInstanceType" : {
-      "Description" : "Instance type for Docker Universal Control Plane node(s)",
+    "UCPControllerNodeInstanceType" : {
+      "Description" : "Instance type for Docker Universal Control Plane Controller node(s)",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : [ "t2.micro","t2.small","t2.medium","t2.large","m4.large","m4.xlarge","m4.2xlarge","m4.4xlarge" ]
+    },
+    "UCPCapacityNodeInstanceType" : {
+      "Description" : "Instance type for Docker Universal Control Plane Capacity node(s)",
       "Type" : "String",
       "Default" : "t2.micro",
       "AllowedValues" : [ "t2.micro","t2.small","t2.medium","t2.large","m4.large","m4.xlarge","m4.2xlarge","m4.4xlarge" ]
@@ -140,7 +146,7 @@
       },
       {
         "Label" : { "default" : "UCP Configuration" },
-        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPInstanceType", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
+        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPControllerNodeInstanceType", "UCPCapacityNodeInstanceType", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
       }
     ],
     "ParameterLabels" : {
@@ -251,14 +257,14 @@
     "UCPTempMaster" : {
       "Type" : "AWS::EC2::Instance",
       "Properties" : {
-        "InstanceType" : { "Ref" : "UCPInstanceType" },
+        "InstanceType" : { "Ref" : "UCPControllerNodeInstanceType" },
         "KeyName" : { "Ref" : "AppKeyName" },
         "SubnetId" : { "Ref" : "ApplicationSubnetAZ3" },
         "ImageId" : {
            "Fn::If" : [
              "UseDefaultAMI",
              { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
-                                         { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPInstanceType" },
+                                         { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPControllerNodeInstanceType" },
                                          "Arch" ] } ] },
              {"Ref" : "UCPAMI"}
            ]},
@@ -448,7 +454,7 @@
             "Fn::If" : [
               "UseDefaultAMI",
               { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
-                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPInstanceType" },
+                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPControllerNodeInstanceType" },
                                           "Arch" ] } ] },
               {"Ref" : "UCPAMI"}
             ]},
@@ -545,12 +551,12 @@
             "Fn::If" : [
               "UseDefaultAMI",
               { "Fn::FindInMap" : [ "UCPRegionArch2AMI", { "Ref" : "AWS::Region" },
-                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPInstanceType" },
+                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "UCPCapacityNodeInstanceType" },
                                           "Arch" ] } ] },
               {"Ref" : "UCPAMI"}
             ]},
          "SecurityGroups" : [ { "Ref" : "UCPCapacityNodesSG" }, { "Ref" : "UCPNodesSG" } ],
-         "InstanceType" : { "Ref" : "UCPInstanceType" },
+         "InstanceType" : { "Ref" : "UCPCapacityNodeInstanceType" },
          "IamInstanceProfile": { "Ref": "UCPInstanceProfile" },
          "BlockDeviceMappings" : [
           {
