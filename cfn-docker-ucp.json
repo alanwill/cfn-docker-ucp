@@ -19,6 +19,7 @@
       "Type": "String",
       "MinLength": "3",
       "MaxLength": "25",
+      "Default" :  "ucp",
       "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
     },
     "UCPControllerNodeInstanceType" : {
