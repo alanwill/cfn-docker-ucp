@@ -219,7 +219,7 @@
         "HealthCheck" : {
           "HealthyThreshold" : "5",
           "Interval" : "60",
-           "Target" : "TCP:443",
+           "Target" : "HTTPS:443/_ping",
            "Timeout" : "5",
            "UnhealthyThreshold" : "5"
         },
