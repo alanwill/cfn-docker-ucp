@@ -224,7 +224,7 @@
            "UnhealthyThreshold" : "5"
         },
         "LoadBalancerName" : { "Ref" : "ELBName" },
-        "Instances" : [ { "Ref" : "UCPTempMaster" } ],
+        "Instances" : [ { "Ref" : "UCPControllerMaster" } ],
         "Listeners" : [ {
           "InstancePort" : "443",
           "InstanceProtocol" : "TCP",
@@ -255,7 +255,7 @@
       }
     },
 
-    "UCPTempMaster" : {
+    "UCPControllerMaster" : {
       "Type" : "AWS::EC2::Instance",
       "Properties" : {
         "InstanceType" : { "Ref" : "UCPControllerNodeInstanceType" },
@@ -296,7 +296,7 @@
         "Tags" : [
           {
             "Key" : "purpose",
-            "Value" : "UCP Temp Master"
+            "Value" : "UCP Controller Master"
           },
           {
             "Key" : "stack",
@@ -308,13 +308,13 @@
           },
           {
             "Key" : "Name",
-            "Value" : "UCP Temp Master"
+            "Value" : "UCP Controller Master"
           }
         ]
       }
     },
 
-    "UCPNode1DiskUtilizationRoot": {
+    "UCPControllerDiskUtilizationRoot": {
       "Type": "AWS::CloudWatch::Alarm",
       "Properties": {
         "AlarmDescription": "UCP Root Disk Utilization",
@@ -344,7 +344,7 @@
         "ComparisonOperator": "GreaterThanOrEqualToThreshold"
       }
     },
-    "UCPNode1MemoryUtilization": {
+    "UCPControllerMemoryUtilization": {
       "Type": "AWS::CloudWatch::Alarm",
       "Properties": {
         "AlarmDescription": "UCP Memory Utilization",
@@ -366,7 +366,7 @@
         "ComparisonOperator": "GreaterThanOrEqualToThreshold"
       }
     },
-    "UCPNode1CPUUtilization": {
+    "UCPControllerCPUUtilization": {
       "Type": "AWS::CloudWatch::Alarm",
       "Properties": {
         "AlarmDescription": "UCP CPU Utilization",
@@ -391,7 +391,7 @@
 
    "UCPControllerNodeGroup" : {
      "Type" : "AWS::AutoScaling::AutoScalingGroup",
-     "DependsOn" : "UCPTempMaster",
+     "DependsOn" : "UCPControllerMaster",
      "Properties" : {
         "VPCZoneIdentifier" : [ { "Ref" : "ApplicationSubnetAZ1"}, {"Ref" : "ApplicationSubnetAZ2"}, {"Ref" : "ApplicationSubnetAZ3"}],
         "Cooldown" : "300",
@@ -448,7 +448,7 @@
 
    "UCPControllerNodeLaunchConfig" : {
       "Type" : "AWS::AutoScaling::LaunchConfiguration",
-      "DependsOn" : "UCPTempMaster",
+      "DependsOn" : "UCPControllerMaster",
       "Properties" : {
          "KeyName" : { "Ref" : "AppKeyName" },
          "ImageId" : {
