@@ -398,7 +398,7 @@
         "LaunchConfigurationName" : { "Ref" : "UCPControllerNodeLaunchConfig" },
         "DesiredCapacity" : { "Ref" : "UCPControllerNodeCount" },
         "HealthCheckGracePeriod" : 300,
-        "HealthCheckType" : "ELB",
+        "HealthCheckType" : "EC2",
         "MinSize" : { "Ref" : "UCPControllerNodeCount" },
         "MaxSize" : { "Ref" : "UCPControllerNodeCount" },
         "LoadBalancerNames" : [ { "Ref" : "UCPControllerElasticLoadBalancer" } ],
