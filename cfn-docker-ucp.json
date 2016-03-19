@@ -46,10 +46,10 @@
       "Default" : "orca"
     },
     "UCPControllerNodeCount" : {
-      "Description" : "Number of UCP Controller nodes, this should be either 3 or 5",
+      "Description" : "Number of UCP Controller nodes, this should be either 2 or 4. Note: A Controller Master is also provisioned and will be part of this count in order to achieve proper quorum.",
       "Type" : "String",
-      "Default" : "3",
-      "AllowedValues" : [ "3","5" ]
+      "Default" : "2",
+      "AllowedValues" : [ "2","4" ]
     },
     "UCPServerCertFingerprint" : {
       "Description" : "Certificate fingerprint for Web Server",
