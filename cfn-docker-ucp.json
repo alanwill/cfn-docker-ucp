@@ -55,6 +55,10 @@
       "Description" : "Certificate fingerprint for Web Server",
       "Type" : "String"
     },
+    "UCPContainerLogsLogGroup" : {
+      "Description" : "Name of Cloudwatch Logs Log Group to be used for Docker container logs.",
+      "Type" : "String"
+    },
     "UCPWorkerNodeCount" : {
       "Description" : "Number of UCP Worker nodes (where the containers will run), this could be any number as it dictates cluster capacity within a region",
       "Type" : "String",
@@ -143,7 +147,7 @@
     "ParameterGroups" : [
     {
         "Label" : { "default" : "UCP Configuration" },
-        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPConsoleFQDN", "UCPAdminPWD", "UCPControllerNodeInstanceType", "UCPControllerNodeCount", "UCPWorkerNodeInstanceType", "UCPWorkerNodeCount", "UCPServerCertFingerprint", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
+        "Parameters" : [ "AppKeyName", "AppName", "EnvironmentName", "UCPConsoleFQDN", "UCPAdminPWD", "UCPContainerLogsLogGroup", "UCPControllerNodeInstanceType", "UCPControllerNodeCount", "UCPWorkerNodeInstanceType", "UCPWorkerNodeCount", "UCPServerCertFingerprint", "UCPAMI", "UCPConfigsBucket", "DockerSNSNotificationsARN", "ELBName", "ELBLogsBucket", "ELBLogsBucketPrefix" ]
     },
     {
       "Label" : { "default" : "Network Configuration" },
@@ -285,21 +289,34 @@
             "rm -f get-pip.py\n",
             "pip install awscli\n",
             "\n",
-            "##START Sysdig Install##\n",
-            "curl -s https://s3.amazonaws.com/download.draios.com/DRAIOS-GPG-KEY.public | apt-key add -\n",
-            "curl -s -o /etc/apt/sources.list.d/draios.list http://download.draios.com/stable/deb/draios.list\n",
-            "apt-get update\n",
-            "apt-get -y install linux-headers-$(uname -r)\n",
-            "apt-get -y install sysdig\n",
-            "##END Sysdig Install##\n",
-            "\n",
+            "##START Controller Master##\n",
             "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/docker/install-docker-os-engine.sh /root/install-docker-os-engine.sh\n",
             "chmod +x /root/install-docker-os-engine.sh\n",
             "sh /root/install-docker-os-engine.sh\n",
             "rm -f /root/install-docker-os-engine.sh\n",
+            "sed -i -e 's/#DOCKER_OPTS=\"--dns 8.8.8.8 --dns 8.8.4.4\"/DOCKER_OPTS=\"--log-driver=awslogs --log-opt awslogs-region=", { "Ref" : "AWS::Region" }, " --log-opt awslogs-group=", { "Ref" : "UCPContainerLogsLogGroup" }, "\"/g' /etc/default/docker\n",
+            "service docker restart\n",
             "docker volume create --name ucp-controller-server-certs\n",
             "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/ucp/certs/ /var/lib/docker/volumes/ucp-controller-server-certs/_data/ --recursive\n",
-            "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp install --san ", { "Ref" : "UCPConsoleFQDN" }, " --dns 169.254.169.253 --external-ucp-ca\n"
+            "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp install --san ", { "Ref" : "UCPConsoleFQDN" }, " --dns 169.254.169.253 --external-ucp-ca\n",
+            "##END Controller Master##\n",
+            "\n",
+            "##START Cloudwatch Logs##\n",
+            "curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O\n",
+            "chmod +x ./awslogs-agent-setup.py\n",
+            "./awslogs-agent-setup.py -n -r us-east-1 -c s3://", { "Ref" : "UCPConfigsBucket" }, "/awslogs/awslogs.conf\n",
+            "##END Cloudwatch Logs##\n",
+            "\n",
+            "##START Cloudwatch Memory and Disk Metrics##\n",
+            "apt-get install unzip libwww-perl libdatetime-perl -y\n",
+            "curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+            "unzip /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+            "rm /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+            "crontab -l > /root/cloudwatch-mon\n",
+            "echo \"*/5 * * * * ~/aws-scripts-mon/mon-put-instance-data.pl --mem-util --swap-util --disk-space-util --disk-path=/ --from-cron\" >> /root/cloudwatch-mon\n",
+            "crontab /root/cloudwatch-mon\n",
+            "rm /root/cloudwatch-mon\n",
+            "##END Cloudwatch Memory and Disk Metrics##\n"
          ]]}},
         "Tags" : [
           {
@@ -488,9 +505,28 @@
              "chmod +x /root/install-docker-os-engine.sh\n",
              "sh /root/install-docker-os-engine.sh\n",
              "rm -f /root/install-docker-os-engine.sh\n",
+             "sed -i -e 's/#DOCKER_OPTS=\"--dns 8.8.8.8 --dns 8.8.4.4\"/DOCKER_OPTS=\"--log-driver=awslogs --log-opt awslogs-region=", { "Ref" : "AWS::Region" }, " --log-opt awslogs-group=", { "Ref" : "UCPContainerLogsLogGroup" }, "\"/g' /etc/default/docker\n",
+             "service docker restart\n",
              "docker volume create --name ucp-controller-server-certs\n",
              "aws s3 cp s3://", { "Ref" : "UCPConfigsBucket" }, "/ucp/certs/ /var/lib/docker/volumes/ucp-controller-server-certs/_data/ --recursive\n",
-             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --replica --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --san ", { "Ref" : "UCPConsoleFQDN" }, " --dns 169.254.169.253 --fingerprint ", { "Ref" : "UCPServerCertFingerprint" }, " --external-ucp-ca\n"
+             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --replica --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --san ", { "Ref" : "UCPConsoleFQDN" }, " --dns 169.254.169.253 --fingerprint ", { "Ref" : "UCPServerCertFingerprint" }, " --external-ucp-ca\n",
+             "\n",
+             "##START Cloudwatch Logs##\n",
+             "curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O\n",
+             "chmod +x ./awslogs-agent-setup.py\n",
+             "./awslogs-agent-setup.py -n -r us-east-1 -c s3://", { "Ref" : "UCPConfigsBucket" }, "/awslogs/awslogs.conf\n",
+             "##END Cloudwatch Logs##\n",
+             "\n",
+             "##START Cloudwatch Memory and Disk Metrics##\n",
+             "apt-get install unzip libwww-perl libdatetime-perl -y\n",
+             "curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+             "unzip /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+             "rm /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+             "crontab -l > /root/cloudwatch-mon\n",
+             "echo \"*/5 * * * * ~/aws-scripts-mon/mon-put-instance-data.pl --mem-util --swap-util --disk-space-util --disk-path=/ --from-cron\" >> /root/cloudwatch-mon\n",
+             "crontab /root/cloudwatch-mon\n",
+             "rm /root/cloudwatch-mon\n",
+             "##END Cloudwatch Memory and Disk Metrics##\n"
           ]]}}
       }
    },
@@ -585,7 +621,26 @@
              "chmod +x /root/install-docker-os-engine.sh\n",
              "sh /root/install-docker-os-engine.sh\n",
              "rm -f /root/install-docker-os-engine.sh\n",
-             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --dns 169.254.169.253 --fingerprint ", { "Ref" : "UCPServerCertFingerprint" }, "\n"
+             "sed -i -e 's/#DOCKER_OPTS=\"--dns 8.8.8.8 --dns 8.8.4.4\"/DOCKER_OPTS=\"--log-driver=awslogs --log-opt awslogs-region=", { "Ref" : "AWS::Region" }, " --log-opt awslogs-group=", { "Ref" : "UCPContainerLogsLogGroup" }, "\"/g' /etc/default/docker\n",
+             "service docker restart\n",
+             "docker run --rm -i -e UCP_ADMIN_USER=admin -e UCP_ADMIN_PASSWORD=", { "Ref" : "UCPAdminPWD" }, " -v /var/run/docker.sock:/var/run/docker.sock --name ucp docker/ucp join --url https://", { "Fn::GetAtt" : [ "UCPControllerElasticLoadBalancer" , "DNSName" ] }, " --dns 169.254.169.253 --fingerprint ", { "Ref" : "UCPServerCertFingerprint" }, "\n",
+             "\n",
+             "##START Cloudwatch Logs##\n",
+             "curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O\n",
+             "chmod +x ./awslogs-agent-setup.py\n",
+             "./awslogs-agent-setup.py -n -r us-east-1 -c s3://", { "Ref" : "UCPConfigsBucket" }, "/awslogs/awslogs.conf\n",
+             "##END Cloudwatch Logs##\n",
+             "\n",
+             "##START Cloudwatch Memory and Disk Metrics##\n",
+             "apt-get install unzip libwww-perl libdatetime-perl -y\n",
+             "curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+             "unzip /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+             "rm /root/CloudWatchMonitoringScripts-1.2.1.zip\n",
+             "crontab -l > /root/cloudwatch-mon\n",
+             "echo \"*/5 * * * * ~/aws-scripts-mon/mon-put-instance-data.pl --mem-util --swap-util --disk-space-util --disk-path=/ --from-cron\" >> /root/cloudwatch-mon\n",
+             "crontab /root/cloudwatch-mon\n",
+             "rm /root/cloudwatch-mon\n",
+             "##END Cloudwatch Memory and Disk Metrics##\n"
           ]]}}
       }
    },
@@ -613,22 +668,36 @@
       }
     },
 
-    "MonitoringUCP" : {
+    "CloudwatchMonitoringUCP" : {
       "Type" : "AWS::IAM::ManagedPolicy",
       "Properties" : {
-        "Description" : "Cloudwatch monitoring for UCP custom metrics",
+        "Description" : "Cloudwatch instance monitoring for UCP custom metrics",
         "Path" : "/",
         "PolicyDocument" :   {
           "Version":"2012-10-17",
           "Statement": [
               {
                   "Effect": "Allow",
-                  "Action": [ "cloudwatch:PutMetricData",
-                                "cloudwatch:GetMetricStatistics",
-                                "cloudwatch:ListMetrics",
-                                "ec2:DescribeTags"
-                            ],
+                  "Action": [ "cloudwatch:PutMetricData", "cloudwatch:GetMetricStatistics", "cloudwatch:ListMetrics", "ec2:DescribeTags"],
                   "Resource": [ "*" ]
+              }
+          ]
+        }
+      }
+    },
+
+    "CloudwatchLogsMonitoringUCP" : {
+      "Type" : "AWS::IAM::ManagedPolicy",
+      "Properties" : {
+        "Description" : "Cloudwatch logs monitoring for Docker daemon",
+        "Path" : "/",
+        "PolicyDocument" :   {
+          "Version":"2012-10-17",
+          "Statement": [
+              {
+                  "Effect": "Allow",
+                  "Action": [ "logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams" ],
+                  "Resource": [ "arn:aws:logs:*:*:*" ]
               }
           ]
         }
@@ -660,7 +729,7 @@
           ]
         },
         "Path": "/",
-        "ManagedPolicyArns" : [{ "Ref" : "ReadWriteToUCPBucket" }, { "Ref" : "MonitoringUCP" }]
+        "ManagedPolicyArns" : [{ "Ref" : "ReadWriteToUCPBucket" }, { "Ref" : "CloudwatchMonitoringUCP" }, { "Ref" : "CloudwatchLogsMonitoringUCP" }]
       }
     },
 
